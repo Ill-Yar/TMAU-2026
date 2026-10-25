@@ -8,10 +8,22 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
+
 constexpr double kDt = 0.1;
+
+class InputError final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+class CsvOutputError final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 struct Signal {
     std::string id;
@@ -29,12 +41,13 @@ struct ResultRow {
     double output;
 };
 
-int readChoice(const std::string& prompt, int min, int max) {
+int readChoice(std::string_view prompt, int min, int max) {
     std::cout << prompt;
 
     int choice = 0;
+
     if (!(std::cin >> choice) || choice < min || choice > max) {
-        throw std::invalid_argument("Неверный выбор.");
+        throw InputError("Неверный выбор.");
     }
 
     return choice;
@@ -43,17 +56,18 @@ int readChoice(const std::string& prompt, int min, int max) {
 int readSteps() {
     return readChoice(
         "Введите количество шагов n (1-100000): ",
-        1, 100000
+        1,
+        100000
     );
 }
 
-double readCoefficient(const std::string& name) {
+double readCoefficient(std::string_view name) {
     std::cout << "Введите коэффициент " << name << ": ";
 
     double value = 0.0;
 
     if (!(std::cin >> value) || !std::isfinite(value)) {
-        throw std::invalid_argument(
+        throw InputError(
             "Коэффициент должен быть конечным числом."
         );
     }
@@ -66,10 +80,10 @@ std::unique_ptr<Model> createModel(int choice) {
     case 1: {
         std::cout << "\nПараметры Model 1.6\n";
 
-        double a1 = readCoefficient("a1");
-        double a2 = readCoefficient("a2");
-        double a3 = readCoefficient("a3");
-        double b = readCoefficient("b");
+        const double a1 = readCoefficient("a1");
+        const double a2 = readCoefficient("a2");
+        const double a3 = readCoefficient("a3");
+        const double b = readCoefficient("b");
 
         return std::make_unique<Model16>(a1, a2, a3, b);
     }
@@ -77,9 +91,9 @@ std::unique_ptr<Model> createModel(int choice) {
     case 2: {
         std::cout << "\nПараметры Model 2.8\n";
 
-        double a = readCoefficient("a");
-        double b = readCoefficient("b");
-        double c = readCoefficient("c");
+        const double a = readCoefficient("a");
+        const double b = readCoefficient("b");
+        const double c = readCoefficient("c");
 
         return std::make_unique<Model28>(a, b, c);
     }
@@ -87,18 +101,18 @@ std::unique_ptr<Model> createModel(int choice) {
     case 3: {
         std::cout << "\nПараметры Model 3.10\n";
 
-        double a = readCoefficient("a");
-        double b = readCoefficient("b");
+        const double a = readCoefficient("a");
+        const double b = readCoefficient("b");
 
         return std::make_unique<Model310>(a, b);
     }
 
     default:
-        throw std::invalid_argument("Неизвестная модель.");
+        throw InputError("Неизвестная модель.");
     }
 }
 
-double controlInput(const std::string& id, int tau) {
+double controlInput(std::string_view id, int tau) {
     if (id == "step") {
         return 1.0;
     }
@@ -111,12 +125,12 @@ double controlInput(const std::string& id, int tau) {
         return std::sin(static_cast<double>(tau));
     }
 
-    throw std::invalid_argument("Неизвестное воздействие.");
+    throw InputError("Неизвестное входное воздействие.");
 }
 
 void printTable(
     const Signal& signal,
-    const std::string& modelName,
+    std::string_view modelName,
     const std::vector<ResultRow>& rows
 ) {
     std::cout << "\nВходное воздействие: "
@@ -148,14 +162,14 @@ void printTable(
 }
 
 void writeCsv(
-    const std::string& fileName,
+    std::string_view fileName,
     const std::vector<ResultRow>& rows
 ) {
-    std::ofstream out(fileName);
+    std::ofstream out{std::string(fileName)};
 
     if (!out) {
-        throw std::runtime_error(
-            "Не удалось создать файл: " + fileName
+        throw CsvOutputError(
+            "Не удалось создать CSV-файл."
         );
     }
 
@@ -175,9 +189,12 @@ void writeCsv(
     }
 
     if (!out) {
-        throw std::runtime_error("Ошибка записи CSV.");
+        throw CsvOutputError(
+            "Ошибка при записи CSV-файла."
+        );
     }
 }
+
 } // namespace
 
 int main() {
@@ -193,7 +210,8 @@ int main() {
             "2. Model 2.8 - нелинейная логистическая модель\n"
             "3. Model 3.10 - дифференциальное уравнение\n"
             "Ваш выбор: ",
-            1, 3
+            1,
+            3
         );
 
         const std::vector<Signal> signals = {
@@ -210,13 +228,13 @@ int main() {
             "2. Импульсное (u(0) = 1, далее 0)\n"
             "3. Гармоническое (u(tau) = sin(tau))\n"
             "Ваш выбор: ",
-            1, 3
+            1,
+            3
         );
 
         const Signal& signal =
             signals[static_cast<std::size_t>(signalChoice - 1)];
 
-        // Создаём только выбранную модель.
         auto model = createModel(modelChoice);
         const std::string modelName = model->name();
 
@@ -247,7 +265,7 @@ int main() {
         writeCsv("results.csv", rows);
 
         std::cout << "\nРезультаты сохранены в results.csv\n"
-                  << "Теперь будет предложено построить график.\n";
+                  << "Теперь будет запущена визуализация.\n";
 
         return 0;
     }
